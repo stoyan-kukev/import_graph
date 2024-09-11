@@ -89,36 +89,85 @@ pub fn main() !void {
         }
     }
 
-    // Output the import counts, indicating how many imports each file makes
-    var iter = importCounts.iterator();
-    while (iter.next()) |entry| {
-        std.debug.print("{s} imports {d} components\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    const screenWidth = 800;
+    const screenHeight = 600;
+
+    rl.initWindow(screenWidth, screenHeight, "Dependency Graph Visualization");
+    defer rl.closeWindow();
+
+    rl.setTargetFPS(60);
+
+    // Variables for graph layout
+    const node_radius = 30;
+    var node_positions = std.StringHashMap(rl.Vector2).init(allocator);
+    defer node_positions.deinit();
+
+    const node_offset = rl.Vector2.init(100.0, 100.0);
+
+    // Calculate dependency levels
+    var dependency_levels = std.StringHashMap(usize).init(allocator);
+    defer dependency_levels.deinit();
+
+    var iter = importGraph.getAllNodes();
+    while (iter.next()) |node_name| {
+        var level: usize = 0;
+        if (importGraph.getAdjacentNodes(node_name.*)) |adjacent_nodes| {
+            level = adjacent_nodes.count();
+        }
+        try dependency_levels.put(node_name.*, level);
     }
 
-    const screenWidth = 800;
-    const screenHeight = 450;
+    // Find max dependency level
+    var max_level: usize = 0;
+    var level_iter = dependency_levels.iterator();
+    while (level_iter.next()) |entry| {
+        if (entry.value_ptr.* > max_level) {
+            max_level = entry.value_ptr.*;
+        }
+    }
 
-    rl.initWindow(screenWidth, screenHeight, "raylib-zig [core] example - basic window");
-    defer rl.closeWindow(); // Close window and OpenGL context
+    // Calculate node positions based on dependency levels
+    iter = importGraph.getAllNodes();
+    while (iter.next()) |node_name| {
+        const level = dependency_levels.get(node_name.*) orelse 0;
+        const y_pos = @as(f32, @floatFromInt(max_level - level)) / @as(f32, @floatFromInt(max_level + 1)) * screenHeight;
+        const offset = rl.Vector2.init(node_offset.x, y_pos);
+        try node_positions.put(node_name.*, offset);
+    }
 
-    rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
-    //--------------------------------------------------------------------------------------
-
-    // Main game loop
-    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
-        // Update
-        //----------------------------------------------------------------------------------
-        // TODO: Update your variables here
-        //----------------------------------------------------------------------------------
-
-        // Draw
-        //----------------------------------------------------------------------------------
+    while (!rl.windowShouldClose()) { // Main game loop
         rl.beginDrawing();
         defer rl.endDrawing();
 
         rl.clearBackground(rl.Color.white);
 
-        rl.drawText("Congrats! You created your first window!", 190, 200, 20, rl.Color.light_gray);
-        //----------------------------------------------------------------------------------
+        // Draw nodes and edges
+        var iter_nodes = node_positions.iterator();
+        while (iter_nodes.next()) |entry| {
+            const node_name = try std.fmt.allocPrintZ(allocator, "{s}", .{entry.key_ptr.*});
+            defer allocator.free(node_name);
+
+            const node_pos = entry.value_ptr.*;
+
+            // Draw node circle
+            rl.drawCircleV(node_pos, node_radius, rl.Color.sky_blue);
+
+            // Draw node name using null-terminated string
+            const x: i32 = @intFromFloat(node_pos.x - 20);
+            const y: i32 = @intFromFloat(node_pos.y - 10);
+            rl.drawText(node_name, x, y, 10, rl.Color.dark_gray);
+
+            // Get adjacent nodes and draw edges
+            if (importGraph.getAdjacentNodes(node_name)) |adjacent_nodes| {
+                var adj_iter = adjacent_nodes.iterator();
+                while (adj_iter.next()) |adj_node| {
+                    if (node_positions.get(adj_node.key_ptr.*)) |adj_pos| {
+                        rl.drawLineV(node_pos, adj_pos, rl.Color.black); // Draw edge
+                    }
+                }
+            }
+        }
+
+        rl.drawText("Dependency Graph", 10, 10, 20, rl.Color.dark_gray);
     }
 }

@@ -1,4 +1,5 @@
 const std = @import("std");
+const rl = @import("raylib");
 const Graph = @import("graph/graph.zig").Graph;
 
 pub fn readFile(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
@@ -92,5 +93,32 @@ pub fn main() !void {
     var iter = importCounts.iterator();
     while (iter.next()) |entry| {
         std.debug.print("{s} imports {d} components\n", .{ entry.key_ptr.*, entry.value_ptr.* });
+    }
+
+    const screenWidth = 800;
+    const screenHeight = 450;
+
+    rl.initWindow(screenWidth, screenHeight, "raylib-zig [core] example - basic window");
+    defer rl.closeWindow(); // Close window and OpenGL context
+
+    rl.setTargetFPS(60); // Set our game to run at 60 frames-per-second
+    //--------------------------------------------------------------------------------------
+
+    // Main game loop
+    while (!rl.windowShouldClose()) { // Detect window close button or ESC key
+        // Update
+        //----------------------------------------------------------------------------------
+        // TODO: Update your variables here
+        //----------------------------------------------------------------------------------
+
+        // Draw
+        //----------------------------------------------------------------------------------
+        rl.beginDrawing();
+        defer rl.endDrawing();
+
+        rl.clearBackground(rl.Color.white);
+
+        rl.drawText("Congrats! You created your first window!", 190, 200, 20, rl.Color.light_gray);
+        //----------------------------------------------------------------------------------
     }
 }

@@ -156,6 +156,8 @@ pub fn main() !void {
         level_counts[level] += 1;
     }
 
+    var toggle_outgoing = false;
+
     while (!rl.windowShouldClose()) {
         rl.beginDrawing();
         defer rl.endDrawing();
@@ -184,10 +186,12 @@ pub fn main() !void {
             try highlighted_nodes.put(node, {});
 
             // Add nodes connected to the hovered node
-            if (importGraph.nodes.get(node)) |adj_set| {
-                var adj_iter = adj_set.keyIterator();
-                while (adj_iter.next()) |adj_node| {
-                    try highlighted_nodes.put(adj_node.*, {});
+            if (toggle_outgoing) {
+                if (importGraph.nodes.get(node)) |adj_set| {
+                    var adj_iter = adj_set.keyIterator();
+                    while (adj_iter.next()) |adj_node| {
+                        try highlighted_nodes.put(adj_node.*, {});
+                    }
                 }
             }
 
@@ -230,16 +234,22 @@ pub fn main() !void {
                 const ctrl_x = (start_x + end_x) / 2 + (end_y - start_y) / 4;
                 const ctrl_y = (start_y + end_y) / 2 - (end_x - start_x) / 4;
 
-                // Determine edge opacity
-                var edge_opacity: u8 = undefined;
-                if (hovered_node != null) {
-                    edge_opacity = if (highlighted_nodes.contains(from_node) and highlighted_nodes.contains(to_node.*)) 255 else 25;
+                // Determine edge color and opacity
+                var edge_color: rl.Color = undefined;
+                if (hovered_node) |node| {
+                    if (std.mem.eql(u8, from_node, node) and toggle_outgoing) {
+                        edge_color = rl.Color.init(0, 255, 0, 255); // Green for outgoing edges
+                    } else if (std.mem.eql(u8, to_node.*, node)) {
+                        edge_color = rl.Color.init(255, 0, 0, 255); // Red for incoming edges
+                    } else {
+                        edge_color = rl.Color.init(211, 211, 211, 25); // Faded gray for other edges
+                    }
                 } else {
-                    edge_opacity = 255;
+                    edge_color = rl.Color.init(211, 211, 211, 255); // Normal gray when not hovering
                 }
 
                 // Draw curved edge
-                rl.drawSplineBezierQuadratic(&.{ rl.Vector2.init(start_x, start_y), rl.Vector2.init(ctrl_x, ctrl_y), rl.Vector2.init(end_x, end_y) }, 2, rl.Color.init(211, 211, 211, edge_opacity));
+                rl.drawSplineBezierQuadratic(&.{ rl.Vector2.init(start_x, start_y), rl.Vector2.init(ctrl_x, ctrl_y), rl.Vector2.init(end_x, end_y) }, 2, edge_color);
 
                 // Draw arrowhead
                 const arrow_size: f32 = 10;
@@ -256,8 +266,8 @@ pub fn main() !void {
                 const arrow_x2 = end_x - arrow_size * (@cos(arrow_angle) * arrow_unit_x - @sin(arrow_angle) * arrow_unit_y);
                 const arrow_y2 = end_y - arrow_size * (@cos(arrow_angle) * arrow_unit_y + @sin(arrow_angle) * arrow_unit_x);
 
-                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x1, arrow_y1), 2, rl.Color.init(128, 128, 128, edge_opacity));
-                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x2, arrow_y2), 2, rl.Color.init(128, 128, 128, edge_opacity));
+                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x1, arrow_y1), 2, edge_color);
+                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x2, arrow_y2), 2, edge_color);
             }
         }
 
@@ -297,5 +307,21 @@ pub fn main() !void {
         }
 
         rl.drawText("Dependency Graph - Arrows point from imported files", 10, 10, 30, rl.Color.dark_gray);
+
+        // Draw toggle box
+        const toggle_text = "Show where node is imported";
+        const text_width = rl.measureText(toggle_text, 20);
+        const padding = 20;
+        const toggle_rect = rl.Rectangle{ .x = 10, .y = 50, .width = @as(f32, @floatFromInt(text_width)) + padding * 2, .height = 30 };
+        rl.drawRectangleRec(toggle_rect, if (toggle_outgoing) rl.Color.sky_blue else rl.Color.light_gray);
+        rl.drawRectangleLinesEx(toggle_rect, 2, rl.Color.dark_gray);
+        rl.drawText(toggle_text, @intFromFloat(toggle_rect.x + padding), @intFromFloat(toggle_rect.y + 5), 20, rl.Color.black);
+
+        // Handle toggle box click
+        if (rl.isMouseButtonPressed(rl.MouseButton.mouse_button_left)) {
+            if (rl.checkCollisionPointRec(mouse_pos, toggle_rect)) {
+                toggle_outgoing = !toggle_outgoing;
+            }
+        }
     }
 }

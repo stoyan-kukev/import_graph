@@ -162,6 +162,46 @@ pub fn main() !void {
 
         rl.clearBackground(rl.Color.white);
 
+        const mouse_pos = rl.getMousePosition();
+        var hovered_node: ?[]const u8 = null;
+
+        // Check if mouse is hovering over a node
+        var node_iter = node_positions.iterator();
+        while (node_iter.next()) |entry| {
+            const node_name = entry.key_ptr.*;
+            const node_pos = entry.value_ptr.*;
+            if (rl.checkCollisionPointCircle(mouse_pos, node_pos, node_radius)) {
+                hovered_node = node_name;
+                break;
+            }
+        }
+
+        // Create a set of highlighted nodes
+        var highlighted_nodes = std.StringHashMap(void).init(allocator);
+        defer highlighted_nodes.deinit();
+
+        if (hovered_node) |node| {
+            try highlighted_nodes.put(node, {});
+
+            // Add nodes connected to the hovered node
+            if (importGraph.nodes.get(node)) |adj_set| {
+                var adj_iter = adj_set.keyIterator();
+                while (adj_iter.next()) |adj_node| {
+                    try highlighted_nodes.put(adj_node.*, {});
+                }
+            }
+
+            // Add nodes that import the hovered node
+            var all_nodes = importGraph.getAllNodes();
+            while (all_nodes.next()) |other_node| {
+                if (importGraph.nodes.get(other_node.*)) |adj_set| {
+                    if (adj_set.contains(node)) {
+                        try highlighted_nodes.put(other_node.*, {});
+                    }
+                }
+            }
+        }
+
         // Draw edges
         var edge_iter = importGraph.nodes.iterator();
         while (edge_iter.next()) |entry| {
@@ -190,8 +230,16 @@ pub fn main() !void {
                 const ctrl_x = (start_x + end_x) / 2 + (end_y - start_y) / 4;
                 const ctrl_y = (start_y + end_y) / 2 - (end_x - start_x) / 4;
 
+                // Determine edge opacity
+                var edge_opacity: u8 = undefined;
+                if (hovered_node != null) {
+                    edge_opacity = if (highlighted_nodes.contains(from_node) and highlighted_nodes.contains(to_node.*)) 255 else 25;
+                } else {
+                    edge_opacity = 255;
+                }
+
                 // Draw curved edge
-                rl.drawSplineBezierQuadratic(&.{ rl.Vector2.init(start_x, start_y), rl.Vector2.init(ctrl_x, ctrl_y), rl.Vector2.init(end_x, end_y) }, 2, rl.Color.light_gray);
+                rl.drawSplineBezierQuadratic(&.{ rl.Vector2.init(start_x, start_y), rl.Vector2.init(ctrl_x, ctrl_y), rl.Vector2.init(end_x, end_y) }, 2, rl.Color.init(211, 211, 211, edge_opacity));
 
                 // Draw arrowhead
                 const arrow_size: f32 = 10;
@@ -208,22 +256,34 @@ pub fn main() !void {
                 const arrow_x2 = end_x - arrow_size * (@cos(arrow_angle) * arrow_unit_x - @sin(arrow_angle) * arrow_unit_y);
                 const arrow_y2 = end_y - arrow_size * (@cos(arrow_angle) * arrow_unit_y + @sin(arrow_angle) * arrow_unit_x);
 
-                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x1, arrow_y1), 2, rl.Color.gray);
-                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x2, arrow_y2), 2, rl.Color.gray);
+                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x1, arrow_y1), 2, rl.Color.init(128, 128, 128, edge_opacity));
+                rl.drawLineEx(rl.Vector2.init(end_x, end_y), rl.Vector2.init(arrow_x2, arrow_y2), 2, rl.Color.init(128, 128, 128, edge_opacity));
             }
         }
 
         // Draw nodes and labels
-        var node_iter = node_positions.iterator();
+        node_iter = node_positions.iterator();
         while (node_iter.next()) |entry| {
             const node_name = entry.key_ptr.*;
             const node_pos = entry.value_ptr.*;
             const import_count = importGraph.getImportCount(node_name);
 
+            const import_ratio: f32 = @as(f32, @floatFromInt(import_count)) / @as(f32, @floatFromInt(max_level));
+            const red_component: u8 = @intFromFloat(255 * (1 - import_ratio));
+            const green_component: u8 = @intFromFloat(255 * import_ratio);
+            const blue_component = 0;
+
+            var alpha_component: u8 = undefined;
+            if (hovered_node != null) {
+                alpha_component = if (highlighted_nodes.contains(node_name)) 255 else 25;
+            } else {
+                alpha_component = 255;
+            }
+
             const node_color = if (import_count > 0)
-                rl.Color.init(@intFromFloat(255 * (1 - @as(f32, @floatFromInt(import_count)) / @as(f32, @floatFromInt(max_level)))), @intFromFloat(255 * @as(f32, @floatFromInt(import_count)) / @as(f32, @floatFromInt(max_level))), 0, 255)
+                rl.Color.init(red_component, green_component, blue_component, alpha_component)
             else
-                rl.Color.sky_blue;
+                rl.Color.init(135, 206, 235, alpha_component);
 
             rl.drawCircleV(node_pos, node_radius, node_color);
 
@@ -233,7 +293,7 @@ pub fn main() !void {
             const text_width = rl.measureText(label, 10);
             const x: i32 = @intFromFloat(node_pos.x - @as(f32, @floatFromInt(text_width)) / 2);
             const y: i32 = @intFromFloat(node_pos.y + @as(f32, node_radius) + 5);
-            rl.drawText(label, x, y, 20, rl.Color.dark_gray);
+            rl.drawText(label, x, y, 20, rl.Color.init(69, 69, 69, alpha_component));
         }
 
         rl.drawText("Dependency Graph - Arrows point from imported files", 10, 10, 30, rl.Color.dark_gray);
